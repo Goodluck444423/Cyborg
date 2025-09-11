@@ -185,3 +185,284 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = CYBORGApp(root)
     root.mainloop()
+from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.image import Image
+import json
+import os
+
+USERS_FILE = "cyborg_users.json"
+PROGRESS_FILE = "cyborg_progress.json"
+
+COURSES = {
+    "Python": {
+        "topics": [
+            {"title": "Intro to Python", "content": "Python is a popular programming language."},
+            {"title": "Variables in Python", "content": "Variables store information in Python."}
+        ],
+        "quiz": [
+            {"q": "What is Python?", "options": ["A snake", "A programming language", "A car"], "a": 1}
+        ]
+    },
+    "AI": {
+        "topics": [
+            {"title": "What is AI?", "content": "AI stands for Artificial Intelligence."}
+        ],
+        "quiz": [
+            {"q": "What does AI mean?", "options": ["Artificial Ice", "Artificial Intelligence"], "a": 1}
+        ]
+    },
+    "Cybersecurity": {
+        "topics": [
+            {"title": "Intro to Cybersecurity", "content": "Protecting computers and networks."}
+        ],
+        "quiz": [
+            {"q": "What does Cybersecurity protect?", "options": ["Computers", "Furniture"], "a": 0}
+        ]
+    },
+    "Software Engineering": {
+        "topics": [
+            {"title": "What is Software Engineering?", "content": "Building and maintaining software."}
+        ],
+        "quiz": []
+    },
+    "Ethical Hacking": {
+        "topics": [
+            {"title": "Intro to Ethical Hacking", "content": "Testing system security legally."}
+        ],
+        "quiz": []
+    },
+    "Graphics": {
+        "topics": [
+            {"title": "Intro to Graphics", "content": "Visual representation using computers."}
+        ],
+        "quiz": []
+    }
+}
+
+def load_json(filename):
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f)
+
+class LogoWidget(BoxLayout):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        if os.path.exists('eye_target_logo.png'):
+            self.add_widget(Image(source='eye_target_logo.png', size_hint=(1, 0.5)))
+        self.add_widget(Label(text="CYBORG", font_size=32))
+
+class SignInScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical')
+        layout.add_widget(LogoWidget())
+        self.username = TextInput(hint_text="Username", multiline=False)
+        self.password = TextInput(hint_text="Password", password=True, multiline=False)
+        layout.add_widget(self.username)
+        layout.add_widget(self.password)
+        layout.add_widget(Button(text="Sign In", on_press=self.sign_in))
+        layout.add_widget(Button(text="Sign Up", on_press=lambda _: setattr(self.manager, 'current', 'signup')))
+        self.add_widget(layout)
+    def sign_in(self, instance):
+        users = load_json(USERS_FILE)
+        if self.username.text in users and users[self.username.text] == self.password.text:
+            self.manager.current = "profile"
+            self.manager.get_screen("profile").set_user(self.username.text)
+        else:
+            self.username.text = ""
+            self.password.text = ""
+            self.username.hint_text = "Try again!"
+
+class SignUpScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical')
+        layout.add_widget(LogoWidget())
+        self.username = TextInput(hint_text="Choose Username", multiline=False)
+        self.password = TextInput(hint_text="Choose Password", password=True, multiline=False)
+        layout.add_widget(self.username)
+        layout.add_widget(self.password)
+        layout.add_widget(Button(text="Sign Up", on_press=self.sign_up))
+        self.add_widget(layout)
+    def sign_up(self, instance):
+        users = load_json(USERS_FILE)
+        if self.username.text and self.username.text not in users:
+            users[self.username.text] = self.password.text
+            save_json(USERS_FILE, users)
+            self.manager.current = "signin"
+
+class ProfileScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.user = None
+        layout = BoxLayout(orientation='vertical')
+        self.label = Label(text="Welcome!", font_size=20)
+        layout.add_widget(self.label)
+        layout.add_widget(Button(text="Go to Courses", on_press=self.goto_courses))
+        layout.add_widget(Button(text="Chat with Mr CYBORG", on_press=lambda _: setattr(self.manager, 'current', 'chat')))
+        self.add_widget(layout)
+    def set_user(self, username):
+        self.user = username
+        self.label.text = f"Welcome, {username}!"
+    def goto_courses(self, instance):
+        self.manager.current = "courses"
+        self.manager.get_screen("courses").set_user(self.user)
+
+class CoursesScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.user = None
+        layout = BoxLayout(orientation='vertical')
+        self.label = Label(text="Courses", font_size=24)
+        layout.add_widget(self.label)
+        self.buttons = []
+        for course in COURSES:
+            btn = Button(text=course, on_press=self.open_course)
+            layout.add_widget(btn)
+            self.buttons.append(btn)
+        self.add_widget(layout)
+    def set_user(self, user):
+        self.user = user
+    def open_course(self, instance):
+        course_name = instance.text
+        self.manager.current = "course"
+        self.manager.get_screen("course").set_course(self.user, course_name)
+
+class CourseScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.user = None
+        self.course = None
+        self.topic_index = 0
+        layout = BoxLayout(orientation='vertical')
+        self.label = Label(text="Course", font_size=20)
+        layout.add_widget(self.label)
+        self.text = Label(text="Topic Content", font_size=16)
+        layout.add_widget(self.text)
+        self.next_btn = Button(text="Next Topic", on_press=self.next_topic)
+        layout.add_widget(self.next_btn)
+        self.quiz_btn = Button(text="Take Quiz", on_press=self.take_quiz)
+        layout.add_widget(self.quiz_btn)
+        self.add_widget(layout)
+    def set_course(self, user, course_name):
+        self.user = user
+        self.course = course_name
+        self.topic_index = 0
+        self.show_topic()
+    def show_topic(self):
+        topics = COURSES[self.course]["topics"]
+        if self.topic_index < len(topics):
+            topic = topics[self.topic_index]
+            self.label.text = f"{self.course}: {topic['title']}"
+            self.text.text = topic["content"]
+            self.save_progress()
+        else:
+            self.label.text = f"{self.course}: All topics completed!"
+            self.text.text = "You can now take the quiz."
+    def next_topic(self, instance):
+        self.topic_index += 1
+        self.show_topic()
+    def take_quiz(self, instance):
+        self.manager.current = "quiz"
+        self.manager.get_screen("quiz").set_quiz(self.user, self.course)
+    def save_progress(self):
+        progress = load_json(PROGRESS_FILE)
+        if self.user not in progress:
+            progress[self.user] = {}
+        progress[self.user][self.course] = self.topic_index
+        save_json(PROGRESS_FILE, progress)
+
+class QuizScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.user = None
+        self.course = None
+        self.quiz_index = 0
+        self.score = 0
+        layout = BoxLayout(orientation='vertical')
+        self.label = Label(text="Quiz", font_size=20)
+        layout.add_widget(self.label)
+        self.question = Label(text="Question?", font_size=16)
+        layout.add_widget(self.question)
+        self.option_buttons = []
+        for _ in range(3):
+            btn = Button(text="", on_press=self.choose_option)
+            layout.add_widget(btn)
+            self.option_buttons.append(btn)
+        self.result = Label(text="", font_size=18)
+        layout.add_widget(self.result)
+        self.add_widget(layout)
+    def set_quiz(self, user, course):
+        self.user = user
+        self.course = course
+        self.quiz_index = 0
+        self.score = 0
+        self.show_question()
+    def show_question(self):
+        quiz = COURSES[self.course]["quiz"]
+        if self.quiz_index < len(quiz):
+            q = quiz[self.quiz_index]
+            self.label.text = f"{self.course}: Quiz {self.quiz_index+1}"
+            self.question.text = q["q"]
+            for i, btn in enumerate(self.option_buttons):
+                btn.text = q["options"][i] if i < len(q["options"]) else ""
+                btn.disabled = (i >= len(q["options"]))
+            self.result.text = ""
+        else:
+            self.label.text = f"{self.course}: Quiz Finished!"
+            self.question.text = ""
+            for btn in self.option_buttons:
+                btn.disabled = True
+            self.result.text = f"Score: {self.score}/{len(COURSES[self.course]['quiz'])}"
+    def choose_option(self, instance):
+        quiz = COURSES[self.course]["quiz"]
+        q = quiz[self.quiz_index]
+        choice = q["options"].index(instance.text)
+        if choice == q["a"]:
+            self.score += 1
+        self.quiz_index += 1
+        self.show_question()
+
+class ChatScreen(Screen):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        layout = BoxLayout(orientation='vertical')
+        self.label = Label(text="Chat with Mr CYBORG", font_size=20)
+        layout.add_widget(self.label)
+        self.chat_display = Label(text="", size_hint=(1,0.7))
+        layout.add_widget(self.chat_display)
+        self.msg_input = TextInput(hint_text="Ask anything about technology", multiline=False)
+        layout.add_widget(self.msg_input)
+        layout.add_widget(Button(text="Send", on_press=self.send_msg))
+        self.add_widget(layout)
+    def send_msg(self, instance):
+        user_msg = self.msg_input.text
+        bot_reply = f"Mr CYBORG: You asked '{user_msg}'. (Real AI coming soon!)"
+        self.chat_display.text += f"\nYou: {user_msg}\n{bot_reply}"
+        self.msg_input.text = ""
+
+class CyborgApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(SignInScreen(name='signin'))
+        sm.add_widget(SignUpScreen(name='signup'))
+        sm.add_widget(ProfileScreen(name='profile'))
+        sm.add_widget(CoursesScreen(name='courses'))
+        sm.add_widget(CourseScreen(name='course'))
+        sm.add_widget(QuizScreen(name='quiz'))
+        sm.add_widget(ChatScreen(name='chat'))
+        return sm
+
+if __name__ == "__main__":
+    CyborgApp().run()
